@@ -1,0 +1,40 @@
+import pandas as pd
+from google.colab import files
+
+# Step 1: Allow the user to upload the first CSV file (Glossary 1)
+print("Please upload the first CSV file (Glossary 1):")
+uploaded1 = files.upload()  # This will prompt the user to upload the first file
+
+# Step 2: Allow the user to upload the second CSV file (Glossary 2)
+print("Please upload the second CSV file (Glossary 2):")
+uploaded2 = files.upload()  # This will prompt the user to upload the second file
+
+# Step 3: Extract filenames of the uploaded files
+file1 = list(uploaded1.keys())[0]  # Extract the filename of the first uploaded file
+file2 = list(uploaded2.keys())[0]  # Extract the filename of the second uploaded file
+
+# Step 4: Load the uploaded CSV files into pandas DataFrames
+df1 = pd.read_csv(file1)
+df2 = pd.read_csv(file2)
+
+# Step 5: Renaming columns to match expected names (assuming 'Term' and 'Translation' columns)
+df1 = df1.rename(columns={'Term': 'English', 'Translation': 'Hindi1'})
+df2 = df2.rename(columns={'Term': 'English', 'Translation': 'Hindi2'})
+
+# Step 6: Merge the two glossaries based on the English term
+merged_df = pd.merge(df1, df2, on='English', how='outer')
+
+# Step 7: In case of different Hindi translations for the same English term, add extra translations in a new column 'Engineering'
+merged_df['Engineering'] = merged_df.apply(lambda row: row['Hindi2'] if row['Hindi1'] != row['Hindi2'] else None, axis=1)
+
+# Step 8: Drop 'Hindi2' if it's redundant (i.e., if both Hindi columns are the same)
+merged_df = merged_df.drop(columns=['Hindi2'])
+
+# Step 9: Save the combined result to a new CSV file
+output_file = "/content/combined_glossary.csv"
+merged_df.to_csv(output_file, index=False)
+
+# Step 10: Provide the download link for the user to download the combined file
+files.download(output_file)
+
+print("Glossaries combined successfully! The output is saved as 'combined_glossary.csv'.")

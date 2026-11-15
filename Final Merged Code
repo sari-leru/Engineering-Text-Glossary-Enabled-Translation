@@ -1,0 +1,139 @@
+# Install required libraries
+!pip install googletrans==4.0.0-rc1
+!pip install python-docx
+!pip install nltk
+
+import pandas as pd
+from googletrans import Translator
+from docx import Document
+from google.colab import files
+from nltk.translate.bleu_score import corpus_bleu
+
+# Function to read text from a .docx file
+def read_docx(file_path):
+    doc = Document(file_path)
+    text = "\n".join([para.text for para in doc.paragraphs])
+    return text
+
+# Function to create a glossary dictionary
+def create_glossary(glossary_df):
+    glossary = {}
+    for _, row in glossary_df.iterrows():
+        english_word = row['Sorted Terms']
+        # Use Hindi Translation if not empty, else use Additional
+        hindi_translation = row['Hindi Translations'] if pd.notna(row['Hindi Translations']) else row['Additional']
+        if pd.notna(hindi_translation):
+            glossary[english_word] = hindi_translation
+    return glossary
+
+# Function to apply glossary translations and count glossary hits, along with the referred glossary words
+def apply_glossary(text, glossary):
+    words = text.split()
+    translated_words = []
+    glossary_hit_count = 0  # Initialize counter for glossary terms
+    referred_glossary_words = []  # List to store referred glossary words
+    for word in words:
+        # Check if the word exists in the glossary
+        if word in glossary:
+            translated_words.append(glossary[word])  # Use the glossary translation
+            glossary_hit_count += 1  # Increment the counter for glossary hits
+            referred_glossary_words.append(word)  # Add the referred word to the list
+        else:
+            translated_words.append(word)  # Use the original word
+    return " ".join(translated_words), glossary_hit_count, referred_glossary_words
+
+# Function to split text into smaller blocks
+def split_text(text, max_chars=5000):
+    blocks = []
+    current_block = ""
+    for line in text.splitlines():
+        if len(current_block) + len(line) + 1 > max_chars:
+            blocks.append(current_block.strip())
+            current_block = ""
+        current_block += line + "\n"
+    if current_block.strip():
+        blocks.append(current_block.strip())
+    return blocks
+
+# Function to compute BLEU score
+def compute_bleu_score(reference, hypothesis):
+    # Tokenizing reference and hypothesis (split by words)
+    reference = [reference.split()]
+    hypothesis = hypothesis.split()
+    # Compute BLEU score
+    score = corpus_bleu([reference], [hypothesis])
+    return score
+
+# Upload the glossary CSV
+print("Upload the glossary CSV file:")
+uploaded_glossary = files.upload()
+glossary_file = list(uploaded_glossary.keys())[0]
+
+# Load the glossary into a DataFrame and create the dictionary
+glossary_df = pd.read_csv(glossary_file)
+glossary = create_glossary(glossary_df)
+
+# Upload the English .docx file
+print("Upload the English .docx file:")
+uploaded_english = files.upload()
+english_file = list(uploaded_english.keys())[0]
+
+# Read the English .docx file
+english_text = read_docx(english_file)
+
+# Upload the Hindi reference translation .docx file
+print("Upload the reference Hindi translation .docx file:")
+uploaded_hindi_ref = files.upload()
+hindi_ref_file = list(uploaded_hindi_ref.keys())[0]
+
+# Read the Hindi reference translation
+hindi_reference_text = read_docx(hindi_ref_file)
+
+# Apply glossary translations and get count and referred glossary words
+print("Applying glossary translations...")
+preprocessed_text, glossary_term_count, referred_glossary_words = apply_glossary(english_text, glossary)
+
+# Output the number of glossary terms used during translation
+print(f"Glossary terms referred during translation: {glossary_term_count}")
+print(f"Glossary terms referred: {', '.join(referred_glossary_words)}")
+
+# Split preprocessed text into blocks
+english_blocks = split_text(preprocessed_text)
+
+# Translate remaining text with Google Translate
+translator = Translator()
+print("Translating preprocessed text blocks with Google Translate...")
+google_translated_blocks = []
+for block in english_blocks:
+    translated_block = translator.translate(block, src='en', dest='hi').text
+    google_translated_blocks.append(translated_block)
+
+# Combine the translated blocks
+final_translation = "\n\n".join(google_translated_blocks)
+
+# Save the final translation to a file
+translated_file = "final_translation_with_glossary.txt"
+with open(translated_file, 'w', encoding='utf-8') as f:
+    f.write(final_translation)
+
+# Save glossary hit count and referred words to a file
+count_file = "glossary_hit_count.txt"
+with open(count_file, 'w', encoding='utf-8') as f:
+    f.write(f"Glossary terms referred during translation: {glossary_term_count}\n")
+    f.write(f"Glossary terms referred: {', '.join(referred_glossary_words)}")
+
+# Compute the BLEU score
+bleu_score = compute_bleu_score(hindi_reference_text, final_translation)
+print(f"BLEU score for the translation: {bleu_score}")
+
+# Save BLEU score to a file
+bleu_file = "bleu_score.txt"
+with open(bleu_file, 'w', encoding='utf-8') as f:
+    f.write(f"BLEU score: {bleu_score}")
+
+print(f"\nTranslation completed. File saved as {translated_file}.")
+print(f"Glossary hit count and referred words saved as {count_file}.")
+print(f"BLEU score saved as {bleu_file}.")
+files.download(translated_file)
+files.download(count_file)
+files.download(bleu_file)
